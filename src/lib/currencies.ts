@@ -1,0 +1,22 @@
+export const currencies = [
+  { code: "LKR", symbol: "Rs", name: "Sri Lankan Rupee" },
+  { code: "USD", symbol: "$", name: "US Dollar" },
+  { code: "EUR", symbol: "€", name: "Euro" },
+  { code: "GBP", symbol: "£", name: "British Pound" },
+  { code: "AUD", symbol: "A$", name: "Australian Dollar" },
+  { code: "CAD", symbol: "C$", name: "Canadian Dollar" },
+  { code: "AED", symbol: "dh", name: "UAE Dirham" },
+  { code: "INR", symbol: "₹", name: "Indian Rupee" },
+  { code: "JPY", symbol: "¥", name: "Japanese Yen" },
+  { code: "CNY", symbol: "¥", name: "Chinese Yuan" },
+  { code: "SGD", symbol: "S$", name: "Singapore Dollar" },
+  { code: "SAR", symbol: "SR", name: "Saudi Riyal" },
+  { code: "QAR", symbol: "QR", name: "Qatari Riyal" },
+  { code: "KWD", symbol: "KD", name: "Kuwaiti Dinar" },
+  { code: "OMR", symbol: "OMR", name: "Omani Rial" },
+  { code: "ZAR", symbol: "R", name: "South African Rand" },
+  { code: "RUB", symbol: "₽", name: "Russian Ruble" },
+  { code: "MYR", symbol: "RM", name: "Malaysian Ringgit" },
+  { code: "THB", symbol: "฿", name: "Thai Baht" },
+  { code: "MVR", symbol: "Rf", name: "Maldivian Rufiyaa" }
+];
