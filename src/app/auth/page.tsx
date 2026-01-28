@@ -127,6 +127,20 @@ export default function AuthPage() {
           LEFT PANEL (Visuals)
           ======================= */}
       <div className="hidden lg:flex w-1/2 bg-[#001829] relative items-center justify-center p-12 overflow-hidden">
+         
+         {/* --- NEW ADDITION: DESKTOP BACK BUTTON --- */}
+         <div className="absolute top-8 left-8 z-20">
+            <Link 
+              href="/" 
+              className="flex items-center gap-2 text-white/50 hover:text-white transition-all hover:-translate-x-1 duration-300 font-medium group"
+            >
+               <div className="p-2 bg-white/5 rounded-full group-hover:bg-white/10 transition-colors">
+                 <ArrowLeft size={18} />
+               </div>
+               <span>Back to Home</span>
+            </Link>
+         </div>
+         
          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
          <div className="relative z-10 w-full max-w-lg flex flex-col items-center text-center">
             <div className="mb-12 relative w-auto h-12 flex items-center justify-center gap-2">
