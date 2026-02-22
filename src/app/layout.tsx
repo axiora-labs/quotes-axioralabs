@@ -14,7 +14,7 @@ export const viewport: Viewport = {
 
 // --- SEO, AEO, & AIEO METADATA ---
 export const metadata: Metadata = {
-  metadataBase: new URL("https://axioraquote.axioralabs.com"),
+  metadataBase: new URL("https://aquote.axioralabs.com"),
   title: {
     default: "Axiora QuoteEngine | Sri Lanka's Fastest Free Invoice Tool",
     template: "%s | Axiora Labs",
@@ -24,10 +24,12 @@ export const metadata: Metadata = {
     "free invoice generator sri lanka",
     "quotation maker sinhala",
     "tamil billing software",
+    "sinhala billing software",
     "axiora labs",
     "ai invoice creator",
     "lkr quotation tool",
-    "trilingual business tools"
+    "trilingual business tools",
+    "free invoice generator",
   ],
   authors: [{ name: "Axiora Labs", url: "https://www.axioralabs.com" }],
   creator: "Axiora Labs",
@@ -37,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_LK",
-    url: "https://axioraquote.axioralabs.com",
+    url: "https://quote.axioralabs.com",
     title: "Axiora QuoteEngine | Smart Invoicing in English, Sinhala & Tamil",
     description: "The AI-driven standard for Sri Lankan merchants. Generate invoices via natural language.",
     siteName: "Axiora QuoteEngine",
@@ -61,11 +63,11 @@ export const metadata: Metadata = {
 
   // Multilingual & Subdomain Mapping (AIEO/AEO)
   alternates: {
-    canonical: "https://axioraquote.axioralabs.com",
+    canonical: "https://quote.axioralabs.com",
     languages: {
-      "en-LK": "https://axioraquote.axioralabs.com",
-      "si-LK": "https://axioraquote.axioralabs.com/si",
-      "ta-LK": "https://axioraquote.axioralabs.com/ta",
+      "en-LK": "https://quote.axioralabs.com",
+      "si-LK": "https://quote.axioralabs.com/si",
+      "ta-LK": "https://quote.axioralabs.com/ta",
     },
   },
 

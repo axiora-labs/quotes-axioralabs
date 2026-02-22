@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Loader2, Upload, Save, User, MapPin, Briefcase, Phone, ImageIcon, ArrowLeft, CheckCircle } from 'lucide-react';
-import Image from 'next/image';
+import { 
+  Loader2, Upload, Save, User, MapPin, Briefcase, Phone, 
+  ImageIcon, ArrowLeft, CheckCircle, Store, Building
+} from 'lucide-react';
 
 // --- 1. Type Definitions ---
 interface ProfileData {
@@ -28,8 +30,9 @@ export default function SettingsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false); // New Success State
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   
   const [profile, setProfile] = useState<ProfileData>({
     id: '',
@@ -80,6 +83,7 @@ export default function SettingsPage() {
   // --- 3. Handle Text Changes ---
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setProfile({ ...profile, [e.target.name]: e.target.value });
+    setSaveSuccess(false); // Reset success state when user types
   };
 
   // --- 4. Handle Logo Upload (With Instant Feedback) ---
@@ -91,28 +95,24 @@ export default function SettingsPage() {
     
     const file = e.target.files[0];
     
-    // A. INSTANT PREVIEW: Show the user what they chose immediately
+    // Instant Preview
     const objectUrl = URL.createObjectURL(file);
     setProfile(prev => ({ ...prev, logo_url: objectUrl }));
 
-    // B. Prepare Real Upload
     const fileExt = file.name.split('.').pop();
     const filePath = `${profile.id}/${Date.now()}.${fileExt}`;
 
     try {
-      // 1. Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('logos')
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // 2. Get Public URL
       const { data } = supabase.storage
         .from('logos')
         .getPublicUrl(filePath);
 
-      // 3. Update Profile in Database
       const { error: dbError } = await supabase
         .from('profiles')
         .update({ logo_url: data.publicUrl })
@@ -120,18 +120,14 @@ export default function SettingsPage() {
 
       if (dbError) throw dbError;
 
-      // 4. Finalize State
-      // We update the state with the REAL url now (it will look the same to the user)
       setProfile(prev => ({ ...prev, logo_url: data.publicUrl }));
       setUploadSuccess(true);
       
-      // Clear success message after 3 seconds
       setTimeout(() => setUploadSuccess(false), 3000);
 
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
       alert(`Upload Failed: ${msg}`);
-      // Revert preview on failure (optional, but good UX)
     } finally {
       setUploading(false);
     }
@@ -141,6 +137,7 @@ export default function SettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveSuccess(false);
 
     try {
       const { error } = await supabase
@@ -154,7 +151,9 @@ export default function SettingsPage() {
         .eq('id', profile.id);
 
       if (error) throw error;
-      alert("Profile saved successfully!");
+      
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
 
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
@@ -164,154 +163,181 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#005F99]" /></div>;
+  if (loading) {
+    return (
+      <div className="h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <Loader2 className="animate-spin text-[#005F99]" size={32} />
+        <p className="text-slate-500 font-medium animate-pulse">Loading settings...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-12">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50/50 py-8 px-4 sm:px-6 lg:px-8 pb-32">
+      <div className="max-w-3xl mx-auto space-y-8">
         
-        {/* Header */}
-        <div className="flex items-center gap-4">
-           <button onClick={() => router.back()} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+        {/* --- HEADER --- */}
+        <div className="flex items-center gap-4 pb-4 border-b border-slate-200">
+           <button 
+             onClick={() => router.back()} 
+             className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-500 hover:text-[#005F99] hover:border-[#005F99] transition-all shadow-sm"
+             aria-label="Go back"
+           >
              <ArrowLeft size={20} />
            </button>
-           <h1 className="text-2xl font-black text-slate-800">Business Settings</h1>
+           <div>
+             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Settings</h1>
+             <p className="text-slate-500 text-sm mt-1">Manage your business profile and branding.</p>
+           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-           
-           {/* LEFT: Logo Uploader */}
-           <div className="md:col-span-1 space-y-4">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center relative overflow-hidden">
-                 
-                 {/* Success Overlay */}
-                 {uploadSuccess && (
-                   <div className="absolute top-0 left-0 w-full bg-green-500 text-white text-xs font-bold py-1 z-20 animate-in slide-in-from-top fade-in">
-                     ✓ Upload Complete
-                   </div>
-                 )}
+        <form onSubmit={handleSave} className="space-y-8">
+          
+          {/* --- CARD 1: BRAND IDENTITY --- */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 md:p-10 shadow-sm relative overflow-hidden">
+            <h2 className="text-xl font-bold text-slate-900 mb-8 flex items-center gap-2">
+              <Store className="text-[#005F99]" size={20} /> Brand Identity
+            </h2>
+            
+            {/* Logo Section (Drunk Grandma Friendly - Obvious Upload Button) */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 mb-10 pb-10 border-b border-slate-100">
+              <div className="relative w-28 h-28 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner">
+                {profile.logo_url ? (
+                  <img 
+                    src={profile.logo_url} 
+                    alt="Business Logo" 
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${uploading ? 'opacity-30' : 'opacity-100'}`}
+                  />
+                ) : (
+                  <ImageIcon className="text-slate-300" size={32} />
+                )}
 
-                 <div className="relative w-32 h-32 mx-auto mb-4 rounded-full overflow-hidden border-4 border-slate-100 bg-slate-50 flex items-center justify-center group">
-                    {/* KEY PROP forces React to re-render image when URL changes */}
-                    {profile.logo_url ? (
-                      <Image 
-                        key={profile.logo_url} 
-                        src={profile.logo_url} 
-                        alt="Business Logo" 
-                        fill 
-                        className={`object-cover transition-opacity duration-300 ${uploading ? 'opacity-50' : 'opacity-100'}`}
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      />
-                    ) : (
-                      <ImageIcon className="text-slate-300" size={40} />
-                    )}
-                    
-                    {/* Hover Overlay */}
-                    <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10">
-                       <Upload className="text-white mb-1" size={24} />
-                       <span className="text-white text-[10px] font-bold uppercase">Change</span>
-                       <input 
-                         type="file" 
-                         accept="image/*" 
-                         className="hidden" 
-                         onChange={handleLogoUpload}
-                         disabled={uploading} 
-                       />
-                    </label>
-
-                    {/* Loading Spinner */}
-                    {uploading && (
-                      <div className="absolute inset-0 flex items-center justify-center z-20">
-                        <Loader2 className="animate-spin text-[#00B3B3]" size={32} />
-                      </div>
-                    )}
-                 </div>
-                 
-                 <p className="text-sm font-bold text-slate-700">Business Logo</p>
-                 <p className="text-xs text-slate-400 mt-1">Click image to change</p>
+                {uploading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+                    <Loader2 className="animate-spin text-[#005F99] mb-1" size={24} />
+                    <span className="text-[10px] font-bold text-[#005F99]">Uploading</span>
+                  </div>
+                )}
               </div>
-           </div>
+              
+              <div>
+                <label className="group relative inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-[#005F99]/30 cursor-pointer transition-all shadow-sm">
+                  {uploadSuccess ? (
+                    <><CheckCircle size={18} className="text-green-500" /> Uploaded Successfully</>
+                  ) : (
+                    <><Upload size={18} className="text-slate-400 group-hover:text-[#005F99] transition-colors" /> Upload New Logo</>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleLogoUpload}
+                    disabled={uploading} 
+                  />
+                </label>
+                <p className="text-xs text-slate-500 mt-3 leading-relaxed max-w-xs">
+                  This logo will appear automatically on all your invoices. Recommended size: 500x500px.
+                </p>
+              </div>
+            </div>
 
-           {/* RIGHT: Details Form */}
-           <div className="md:col-span-2">
-              <form onSubmit={handleSave} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-2">
-                          <User size={14} /> Business Name
-                       </label>
-                       <input 
-                         name="business_name"
-                         value={profile.business_name}
-                         onChange={handleChange}
-                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#005F99] font-medium"
-                         placeholder="e.g. Acme Corp"
-                       />
-                    </div>
+            {/* Business Details Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  Business Name
+                </label>
+                <input 
+                  name="business_name"
+                  value={profile.business_name}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-[#005F99] focus:ring-4 focus:ring-[#005F99]/10 text-slate-900 font-medium transition-all"
+                  placeholder="e.g. Acme Hardware"
+                />
+              </div>
 
-                    <div className="space-y-2">
-                       <label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-2">
-                          <Briefcase size={14} /> Business Type
-                       </label>
-                       <select 
-                         name="business_type"
-                         value={profile.business_type}
-                         onChange={handleChange}
-                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#005F99] font-medium"
-                       >
-                         <option value="">Select Type...</option>
-                         <option value="Retail">Retail Store</option>
-                         <option value="Hardware">Hardware / Construction</option>
-                         <option value="Pharmacy">Pharmacy / Health</option>
-                         <option value="Tech">Tech / Agency</option>
-                         <option value="Food">Restaurant / Food</option>
-                         <option value="Other">Other</option>
-                       </select>
-                    </div>
-                 </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  Industry / Category
+                </label>
+                <select 
+                  name="business_type"
+                  value={profile.business_type}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-[#005F99] focus:ring-4 focus:ring-[#005F99]/10 text-slate-900 font-medium transition-all appearance-none"
+                >
+                  <option value="">Select your industry...</option>
+                  <option value="Retail">Retail Store</option>
+                  <option value="Hardware">Hardware / Construction</option>
+                  <option value="Pharmacy">Pharmacy / Health</option>
+                  <option value="Tech">Tech / Electronics</option>
+                  <option value="Food">Restaurant / Food</option>
+                  <option value="Wholesale">Wholesale</option>
+                  <option value="Other">Other Services</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
-                 <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-2">
-                       <Phone size={14} /> Phone Number
-                    </label>
-                    <input 
-                      name="phone"
-                      value={profile.phone}
-                      onChange={handleChange}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#005F99] font-medium"
-                      placeholder="+94 77 123 4567"
-                    />
-                 </div>
+          {/* --- CARD 2: CONTACT INFORMATION --- */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 md:p-10 shadow-sm">
+            <h2 className="text-xl font-bold text-slate-900 mb-8 flex items-center gap-2">
+              <MapPin className="text-[#00B3B3]" size={20} /> Contact Information
+            </h2>
 
-                 <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase text-slate-500 flex items-center gap-2">
-                       <MapPin size={14} /> Business Address
-                    </label>
-                    <textarea 
-                      name="address"
-                      value={profile.address}
-                      onChange={handleChange}
-                      rows={3}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#005F99] font-medium resize-none"
-                      placeholder="No. 123, Main Street, Colombo 03"
-                    />
-                 </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  WhatsApp / Phone Number
+                </label>
+                <input 
+                  name="phone"
+                  value={profile.phone}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-[#005F99] focus:ring-4 focus:ring-[#005F99]/10 text-slate-900 font-medium transition-all"
+                  placeholder="077 123 4567"
+                />
+                <p className="text-xs text-slate-500">Customers will use this to contact you.</p>
+              </div>
 
-                 <div className="pt-4 border-t border-slate-100 flex justify-end">
-                    <button 
-                      type="submit" 
-                      disabled={saving}
-                      className="bg-[#005F99] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#004470] transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                      {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </button>
-                 </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  Full Business Address
+                </label>
+                <textarea 
+                  name="address"
+                  value={profile.address}
+                  onChange={handleChange}
+                  rows={3}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-[#005F99] focus:ring-4 focus:ring-[#005F99]/10 text-slate-900 font-medium transition-all resize-none"
+                  placeholder="No. 123, Main Street, Colombo 03"
+                />
+              </div>
+            </div>
+          </div>
 
-              </form>
-           </div>
-        </div>
+          {/* --- BOTTOM ACTIONS (Sticky layout feel) --- */}
+          <div className="flex justify-end pt-4">
+            <button 
+              type="submit" 
+              disabled={saving}
+              className={`px-8 py-4 rounded-xl font-bold text-white transition-all duration-300 flex items-center gap-2 shadow-lg ${
+                saveSuccess 
+                  ? 'bg-green-500 hover:bg-green-600 shadow-green-500/20' 
+                  : 'bg-[#005F99] hover:bg-[#004470] shadow-blue-900/20'
+              } disabled:opacity-70 disabled:cursor-not-allowed transform hover:-translate-y-0.5`}
+            >
+              {saving ? (
+                <><Loader2 className="animate-spin" size={20} /> Saving details...</>
+              ) : saveSuccess ? (
+                <><CheckCircle size={20} /> Saved Successfully</>
+              ) : (
+                <><Save size={20} /> Save Changes</>
+              )}
+            </button>
+          </div>
+
+        </form>
       </div>
     </div>
   );
