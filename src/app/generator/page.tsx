@@ -2,20 +2,60 @@
 
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ArrowLeft, Crown, Lightbulb, ShieldCheck, Loader2 } from "lucide-react";
+import { 
+  ArrowLeft, Lightbulb, Loader2, Github, Heart, 
+  CheckCircle2, AlertTriangle, FileText, X 
+} from "lucide-react";
 
 // --- CUSTOM COMPONENTS ---
 import InvoiceEditor from "@/components/InvoiceEditor";
-import AdBanner from "@/components/AdBanner";
-import EnterpriseModal from "@/components/EnterpriseModal";
-import LeadCaptureModal from "@/components/LeadCaptureModal";
 
 // --- LIBRARIES & TYPES ---
 import { Language } from "@/lib/dictionaries";
 import { InvoiceData } from "@/types";
 import { generateProfessionalPDF } from "@/lib/pdfGenerator"; 
 import { supabase } from "@/lib/supabase"; 
+
+// --- CUSTOM TOAST ---
+const Toast = ({ 
+  message, 
+  type = 'success', 
+  onClose 
+}: { 
+  message: string; 
+  type?: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const styles = {
+    success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+    error: 'bg-red-50 border-red-200 text-red-900',
+    info: 'bg-blue-50 border-blue-200 text-blue-900',
+  };
+  const icons = {
+    success: <CheckCircle2 size={16} className="text-emerald-600" />,
+    error: <AlertTriangle size={16} className="text-red-600" />,
+    info: <FileText size={16} className="text-blue-600" />,
+  };
+
+  return (
+    <div className="fixed top-20 right-4 z-[110] animate-in slide-in-from-top-4 fade-in duration-300">
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg ${styles[type]} max-w-sm`}>
+        {icons[type]}
+        <p className="text-sm font-medium flex-1">{message}</p>
+        <button onClick={onClose} className="text-current opacity-60 hover:opacity-100">
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 function GeneratorContent() {
   const router = useRouter();
@@ -25,18 +65,13 @@ function GeneratorContent() {
   // --- STATE ---
   const [lang, setLang] = useState<Language>('en');
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   
-  // Profile State: null = Guest, Object = Logged In (Free or Paid)
-  const [profile, setProfile] = useState<{ business_name: string; is_paid_member: boolean } | null>(null);
-  
-  // Modal States
-  const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
-  const [showLeadCapture, setShowLeadCapture] = useState(false);
+  // Profile State: null = Guest, Object = Logged In
+  const [profile, setProfile] = useState<{ business_name: string } | null>(null);
   
   // Data States
   const [initialData, setInitialData] = useState<InvoiceData | null>(null);
-  const [pendingDownloadData, setPendingDownloadData] = useState<InvoiceData | null>(null);
-  const [pendingCategory, setPendingCategory] = useState<string>("");
 
   // --- INITIAL LOAD ---
   useEffect(() => {
@@ -44,28 +79,23 @@ function GeneratorContent() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // 1. Establish User Profile (Prevent "Guest Mode" flicker)
-        // Fallback to email name if profile database is empty
         const emailName = user.email?.split('@')[0] || 'My Business';
-        let userProfile = { business_name: emailName, is_paid_member: false };
+        let userProfile = { business_name: emailName };
 
-        // 2. Fetch Actual Profile from DB
         const { data: prof } = await supabase
           .from('profiles')
-          .select('business_name, is_paid_member')
+          .select('business_name')
           .eq('id', user.id)
           .single();
         
         if (prof) {
           userProfile = {
             business_name: prof.business_name || emailName,
-            is_paid_member: prof.is_paid_member || false
           };
         }
         
         setProfile(userProfile);
 
-        // 3. Fetch Invoice if Editing
         if (editId) {
           const { data: inv, error } = await supabase
             .from('invoices')
@@ -76,15 +106,14 @@ function GeneratorContent() {
           
           if (error || !inv) {
             console.error("Fetch error:", error);
-            alert("Invoice not found or access denied.");
-            router.push('/dashboard');
+            setToast({ message: "Invoice not found or access denied.", type: 'error' });
+            setTimeout(() => router.push('/dashboard'), 2000);
             return;
           }
 
           if (inv.invoice_data) {
             setInitialData(inv.invoice_data as InvoiceData);
           } else {
-            // Legacy Data Reconstruction (Safety Fallback)
             setInitialData({
               items: [{ id: 1, desc: 'Restored Item', qty: 1, price: inv.amount || 0, discount: 0, discountType: 'FIXED' }],
               extraFees: [],
@@ -114,41 +143,34 @@ function GeneratorContent() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return; 
 
-    // Check Storage Limit (Only if creating NEW record and NOT paid)
-    if (!editId && !profile?.is_paid_member) {
-      const { count } = await supabase
-        .from('invoices')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
-      
-      const STORAGE_LIMIT = 20;
-
-      if (count !== null && count >= STORAGE_LIMIT) {
-        setShowEnterpriseModal(true); 
-        throw new Error("STORAGE_LIMIT_REACHED");
-      }
-    }
-
     const payload = {
       user_id: user.id,
       invoice_no: data.invoiceNo,
       client_name: data.client.name || 'Unknown',
       amount: data.grandTotal,
-      invoice_data: data 
+      invoice_data: data,
+      status: 'pending' // <--- DEFAULT STATUS FOR NEW INVOICES
     };
 
     let error;
     if (editId) {
-      const { error: err } = await supabase.from('invoices').update(payload).eq('id', editId);
+      // WHEN EDITING: We intentionally OMIT the 'status' field so we don't overwrite 
+      // an existing status (like 'paid') back to 'pending'.
+      const { error: err } = await supabase.from('invoices').update({
+         invoice_no: payload.invoice_no,
+         client_name: payload.client_name,
+         amount: payload.amount,
+         invoice_data: payload.invoice_data
+      }).eq('id', editId);
       error = err;
     } else {
+      // WHEN CREATING: We insert the full payload, including the default 'pending' status.
       const { error: err } = await supabase.from('invoices').insert(payload);
       error = err;
     }
 
     if (error) throw error;
 
-    // Stealth Analytics (Only for new saves)
     if (data.client.phone && !editId) {
       await supabase.from('leads').insert({
         whatsapp_number: data.client.phone,
@@ -163,19 +185,15 @@ function GeneratorContent() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        alert("Create a free account to save your invoices to the cloud!");
-        router.push('/auth'); 
+        setToast({ message: "Please sign in to save invoices to your cloud dashboard.", type: 'info' });
+        setTimeout(() => router.push('/auth'), 2000);
         return;
       }
       await saveToDatabase(data, category);
-      alert(editId ? "Invoice updated successfully!" : "Invoice saved to Dashboard!");
+      setToast({ message: editId ? "Invoice updated successfully!" : "Invoice saved to your dashboard!", type: 'success' });
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === "STORAGE_LIMIT_REACHED") {
-        alert("Free Storage limit (20 docs) reached. Please upgrade to save more.");
-      } else {
-        console.error("Save Error:", e);
-        alert("Failed to save. Please check your connection.");
-      }
+      console.error("Save Error:", e);
+      setToast({ message: "Failed to save invoice. Please check your connection.", type: 'error' });
     }
   };
 
@@ -184,127 +202,84 @@ function GeneratorContent() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      // GUEST FLOW: Pause and Show Modal
-      setPendingDownloadData(data);
-      setPendingCategory(category); 
-      setShowLeadCapture(true);
+      // Guest flow: just download
+      try {
+        await generateProfessionalPDF(data);
+        setToast({ message: "Invoice downloaded! Sign in to save your history.", type: 'success' });
+      } catch (e) {
+        setToast({ message: "Failed to generate PDF.", type: 'error' });
+      }
     } else {
-      // REGISTERED USER FLOW: Direct Download + Save
       try {
         await generateProfessionalPDF(data);
         await saveToDatabase(data, category);
+        setToast({ message: "Invoice downloaded and saved!", type: 'success' });
       } catch (e: unknown) {
-        if (e instanceof Error && e.message === "STORAGE_LIMIT_REACHED") {
-          alert("PDF Downloaded successfully.\n\nHowever, this record was NOT saved to the cloud because your Free Storage (20 docs) is full.");
-        } else {
-           console.warn("Background Save Warning:", e);
-        }
+        console.warn("Background Save Warning:", e);
+        setToast({ message: "PDF downloaded, but failed to save to cloud.", type: 'error' });
       }
     }
   };
 
-  // --- HANDLER: Guest Download Success ---
-  const handleGuestCaptureSuccess = async (whatsapp: string, email: string) => {
-    if (!pendingDownloadData) return;
-
-    try {
-        // 1. Get IP Info (Client Side) with ROBUST Fallbacks
-        // This fixes the "undefined, undefined" issue on Localhost
-        let ip = 'Unknown IP';
-        let location = 'Unknown Location';
-
-        try {
-            const ipRes = await fetch('https://ipapi.co/json/');
-            if (ipRes.ok) {
-                const data = await ipRes.json();
-                ip = data.ip || 'Unknown IP';
-                
-                // If local/reserved IP, API often returns limited data
-                if (data.error || data.reserved || data.city === undefined) {
-                    location = 'Localhost / Dev Environment';
-                } else {
-                    const city = data.city || 'Unknown City';
-                    const country = data.country_name || 'Unknown Country';
-                    location = `${city}, ${country}`;
-                }
-            }
-        } catch (err) {
-            console.warn("IP Fetch failed (Using defaults)", err);
-        }
-
-        // 2. Insert Lead to Supabase
-        const { error } = await supabase.from('leads').insert({
-            whatsapp_number: whatsapp,
-            email: email,
-            business_category: pendingCategory,
-            location: location,
-            ip_address: ip
-        });
-
-        if (error) throw error;
-
-        // 3. Generate PDF & Cleanup
-        await generateProfessionalPDF(pendingDownloadData);
-        setShowLeadCapture(false);
-        setPendingDownloadData(null);
-        setPendingCategory("");
-
-    } catch (e) {
-        console.error("Guest Capture Error:", e);
-        throw e; // Modal handles this error display
-    }
-  };
-
   if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-[#F8FAFC]">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="animate-spin text-[#005F99]" size={40} />
-        <p className="text-sm font-bold text-slate-500">Loading Generator...</p>
+    <div className="h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="animate-spin text-slate-900" size={24} />
+        <p className="text-xs font-medium text-slate-500">Loading generator...</p>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       
       {/* HEADER */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center">
           
-          <Link 
-            href="/dashboard" 
-            className="flex items-center gap-2 text-slate-500 hover:text-[#005F99] transition-colors text-sm font-bold group"
-          >
-            <div className="p-1.5 rounded-full bg-slate-100 group-hover:bg-blue-50 transition-colors">
-               <ArrowLeft size={16} />
-            </div>
-            <span className="hidden sm:inline">Back</span>
-          </Link>
-
-          <div className="flex items-center gap-2 select-none">
-             <div className="w-8 h-8 bg-[#005F99] rounded-lg flex items-center justify-center text-white font-black text-lg shadow-blue-200 shadow-lg">A</div>
-             <span className="font-bold text-slate-800 tracking-tight text-lg">Axiora<span className="text-[#00B3B3]">Generator</span></span>
+          <div className="flex items-center gap-3">
+            <Link 
+              href="/dashboard" 
+              className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium group"
+            >
+              <ArrowLeft size={16} />
+              <span className="hidden sm:inline">Dashboard</span>
+            </Link>
+            <div className="w-px h-5 bg-slate-200"></div>
+            <Link href="/" className="flex items-center gap-2">
+              <Image src="/axiora-logo.png" alt="Axiora" width={20} height={20} className="rounded-md" />
+              <span className="font-semibold text-sm text-slate-900">
+                Axiora <span className="text-slate-400 font-normal">/</span> <span className="text-slate-500">Generator</span>
+              </span>
+            </Link>
           </div>
 
-          <div className="w-auto flex items-center gap-2">
-             <div className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${profile?.is_paid_member ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-                {profile?.is_paid_member ? <Crown size={12} /> : <ShieldCheck size={12} />}
-                {/* Shows Profile Name if logged in, else Guest Mode */}
-                <span className="truncate max-w-[100px]">{profile ? profile.business_name : 'Guest Mode'}</span>
-             </div>
+          <div className="flex items-center gap-2">
+            {profile ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-md text-xs font-medium text-slate-700">
+                <div className="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[10px] font-bold text-white">
+                  {profile.business_name.charAt(0).toUpperCase()}
+                </div>
+                <span className="hidden sm:inline">{profile.business_name}</span>
+              </div>
+            ) : (
+              <Link href="/auth" className="text-xs font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-md hover:bg-slate-100 transition-colors">
+                Sign in to save
+              </Link>
+            )}
           </div>
         </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* LEFT: EDITOR */}
-        <div className="lg:col-span-9 space-y-6">
+        <div className="lg:col-span-9 space-y-4">
            {editId && (
-             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in">
-                <Lightbulb size={16} className="text-amber-600" />
-                Editing Existing Invoice {initialData ? `(${initialData.invoiceNo})` : '...'}
+             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-lg text-xs font-medium flex items-center gap-2 animate-in fade-in">
+                <Lightbulb size={14} className="text-amber-600" />
+                Editing existing invoice {initialData ? `(${initialData.invoiceNo})` : '...'}
              </div>
            )}
 
@@ -318,75 +293,66 @@ function GeneratorContent() {
         </div>
 
         {/* RIGHT: SIDEBAR */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-4">
           
-          <AdBanner position="sidebar" />
-          
-          {/* Upsell Card (Only for Free Users) */}
-          {!profile?.is_paid_member && (
-            <div className="bg-gradient-to-br from-[#005F99] to-[#004470] rounded-2xl p-6 text-center text-white shadow-lg relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-white/20 transition-all"></div>
-              
-              <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm border border-white/20 shadow-inner">
-                <Crown size={24} className="text-yellow-400" />
-              </div>
-              
-              <h3 className="font-bold text-lg mb-2">Go Enterprise</h3>
-              <p className="text-blue-100 text-xs leading-relaxed mb-4">
-                Unlimited storage, premium AI credits, and removed branding.
-              </p>
-              
-              <button 
-                onClick={() => setShowEnterpriseModal(true)}
-                className="w-full py-3 bg-white text-[#005F99] text-xs font-bold rounded-xl hover:bg-blue-50 transition-all shadow-md active:scale-95"
-              >
-                Upgrade Now
-              </button>
+          {/* Tips Card */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <h4 className="text-xs font-semibold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Lightbulb size={14} className="text-amber-500" /> Tips
+            </h4>
+            <ul className="text-xs text-slate-600 space-y-2.5 leading-relaxed">
+              <li className="flex gap-2">
+                <span className="text-slate-400 mt-1">•</span>
+                <span>Use <b>Rich Text</b> in Notes & Terms for bold, italic, and lists.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-slate-400 mt-1">•</span>
+                <span>Click <b>Design</b> to change fonts, sizes, and layout density.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-slate-400 mt-1">•</span>
+                <span>Switch between <b>Invoice</b> and <b>Quotation</b> modes.</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Open Source / Free Card */}
+          <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Heart size={14} className="text-red-400" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider">Free & Open Source</h4>
             </div>
-          )}
-
-          {/* Tips */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-             <div className="flex items-center gap-2 mb-3">
-                <Lightbulb size={18} className="text-yellow-500" />
-                <h4 className="font-bold text-slate-700 text-sm">Pro Tips</h4>
-             </div>
-             <ul className="text-xs text-slate-500 space-y-3 list-disc pl-4 leading-relaxed marker:text-[#00B3B3]">
-               <li>
-                 <span className="font-semibold text-slate-700">Singlish works!</span> Try typing 
-                 <i className="text-slate-400"> &quot;Simenti kotta 5k&quot;</i>.
-               </li>
-               <li>
-                 Click <span className="font-semibold text-slate-700">&quot;Edit Business Details&quot;</span> to auto-load your Logo.
-               </li>
-               <li>
-                 Switch to <span className="font-semibold text-slate-700">&quot;Quotation&quot;</span> mode to set validity dates.
-               </li>
-             </ul>
+            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+              This tool is completely free. No ads, no tracking, no limits. Built for the community.
+            </p>
+            <a 
+              href="https://github.com/axiora-labs/quotes-axioralabs" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-2 bg-white text-slate-900 text-xs font-medium rounded-md hover:bg-slate-100 transition-colors"
+            >
+              <Github size={12} /> Star on GitHub
+            </a>
           </div>
 
-          <div className="text-center">
-             <p className="text-[10px] text-slate-400 font-medium">
-               Trusted by 100+ Sri Lankan Businesses
-             </p>
+          {/* Footer Note */}
+          <div className="text-center pt-4">
+            <p className="text-[10px] text-slate-400">
+              An open source project by <a href="https://www.axioralabs.com" target="_blank" rel="noopener noreferrer" className="hover:text-slate-600 underline">Axiora Labs</a>
+            </p>
           </div>
-
-          <AdBanner position="sidebar" />
 
         </div>
       </main>
 
-      {/* MODALS */}
-      <EnterpriseModal 
-        isOpen={showEnterpriseModal} 
-        onClose={() => setShowEnterpriseModal(false)} 
-      />
-      
-      <LeadCaptureModal 
-        isOpen={showLeadCapture} 
-        onClose={() => setShowLeadCapture(false)} 
-        onSuccess={handleGuestCaptureSuccess} 
-      />
+      {/* CUSTOM TOAST */}
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
       
     </div>
   );
@@ -396,8 +362,8 @@ function GeneratorContent() {
 export default function GeneratorPage() {
   return (
     <Suspense fallback={
-      <div className="h-screen flex items-center justify-center bg-[#F8FAFC]">
-        <Loader2 className="animate-spin text-[#005F99]" size={40} />
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-slate-900" size={24} />
       </div>
     }>
       <GeneratorContent />

@@ -27,6 +27,18 @@ export const generateProfessionalPDF = async (data: InvoiceData) => {
   const isQuote = data.settings.docType === 'QUOTATION';
   const currency = data.settings.currency;
   
+  // --- PDF QUALITY SETTING ---
+  // Note: jsPDF generates vector-based PDFs, meaning text is always infinitely 
+  // scalable and 100% crisp. The "Quality" setting here optimizes embedded images 
+  // (like your logo) and file compression for web/email vs print.
+  const quality = (data.settings as any).pdfQuality || 'medium';
+  const compressionMap: Record<string, 'FAST' | 'MEDIUM' | 'SLOW'> = {
+    high: 'SLOW',     // Best quality, larger file size
+    medium: 'MEDIUM', // Balanced
+    low: 'FAST'       // Smallest file size, best for email/web
+  };
+  const imgCompression = compressionMap[quality] || 'MEDIUM';
+
   const pageWidth = doc.internal.pageSize.width; 
   const pageHeight = doc.internal.pageSize.height; 
   const marginX = 15;
@@ -50,10 +62,8 @@ export const generateProfessionalPDF = async (data: InvoiceData) => {
   };
 
   // Checks if we have enough space for content of height 'neededHeight'
-  // If not, adds a page, draws strip, draws footer for previous page, and resets Y
   const checkAndAddPage = (currentY: number, neededHeight: number) => {
     if (currentY + neededHeight > pageHeight - bottomMargin) {
-      // FIX: Use doc.getNumberOfPages() instead of doc.internal...
       drawFooter(doc.getNumberOfPages()); // Close current page
       doc.addPage();
       drawHeaderStrip(); // New page styling
@@ -71,8 +81,8 @@ export const generateProfessionalPDF = async (data: InvoiceData) => {
 
   if (data.sender.logoUrl) {
     try {
-        // x, y, width, height
-        doc.addImage(data.sender.logoUrl, 'PNG', 15, 18, 25, 25);
+        // Apply the quality compression setting to the logo image
+        doc.addImage(data.sender.logoUrl, 'PNG', 15, 18, 25, 25, undefined, imgCompression);
         titleY = 50; 
         titleX = 15;
     } catch (e) {
@@ -328,9 +338,9 @@ export const generateProfessionalPDF = async (data: InvoiceData) => {
     doc.text(splitTerms, marginX, finalY);
   }
 
-  // FIX: Use doc.getNumberOfPages() here as well
-  const totalPages = doc.getNumberOfPages();
+   const totalPages = doc.getNumberOfPages();
   drawFooter(totalPages);
 
+  // Save the PDF (jsPDF handles internal compression automatically for vector text)
   doc.save(`${data.settings.docType}_${data.invoiceNo}.pdf`);
 };
