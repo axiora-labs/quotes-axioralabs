@@ -387,9 +387,9 @@ export default function LandingPage() {
       <section className="border-y border-slate-200 bg-slate-50/50">
         <div className="max-w-7xl mx-auto px-4 py-10 grid grid-cols-2 md:grid-cols-4 gap-8">
           {[
-            { label: 'Invoices Generated', value: '12,400+', icon: FileText },
+            { label: 'Invoices Generated', value: '600+', icon: FileText },
             { label: 'Active Users', value: '100+', icon: Users },
-            { label: 'GitHub Stars', value: '0', icon: Star },
+            { label: 'GitHub Stars', value: '2', icon: Star },
             { label: 'Est.', value: '2026', icon: Calendar },
           ].map((stat, i) => (
             <div key={i} className="flex flex-col items-center text-center">
